@@ -10,56 +10,116 @@ datasource db {
 }
 
 model Student {
-  id          Int              @id @default(autoincrement())
-  name        String
-  studentId   String           @unique
-  classId     Int
-  class       Class            @relation(fields: [classId], references: [id])
-  behaviors   BehaviorRecord[]
-  submissions Submission[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id                   Int                @id @default(autoincrement())
+  name                 String
+  studentId            String             @unique
+  englishName          String?
+  gender               String?
+  enrollmentYear       Int?               // e.g. 2023 (for "高2023级")
+  
+  // Administrative Class (e.g. "12年级1班")
+  administrativeClassId Int?
+  administrativeClass   AdministrativeClass? @relation(fields: [administrativeClassId], references: [id])
+
+  // Teaching Classes (e.g. "高2023级生物1班")
+  teachingClasses      TeachingClass[]
+
+  // Tutors
+  tutors               Teacher[]          @relation("StudentTutors")
+
+  behaviors            BehaviorRecord[]
+  submissions          Submission[]
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 }
 
-model Class {
+model SubjectGroup {
   id        Int       @id @default(autoincrement())
   name      String    @unique
+  teachers  Teacher[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Teacher {
+  id             Int           @id @default(autoincrement())
+  name           String        @unique
+  subjectGroupId Int?
+  subjectGroup   SubjectGroup? @relation(fields: [subjectGroupId], references: [id])
+  
+  // Classes they teach
+  classes        TeachingClass[] @relation("ClassTeachers")
+  
+  // Students they tutor
+  tutees         Student[]     @relation("StudentTutors")
+
+  // Administrative classes they manage (Head Teacher)
+  headTeacherOf  AdministrativeClass[] @relation("HeadTeachers")
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model AdministrativeClass {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique // e.g. "十二年级1班"
+  
+  // Head Teachers (Support multiple)
+  headTeachers Teacher[] @relation("HeadTeachers")
+
   students  Student[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
 
-model Course {
+model TeachingClass {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique // e.g. "高2023级生物1班"
+  course    String    // e.g. "A-level 生物 G12"
+  
+  // Relations to Teachers (Many-to-Many to support multiple teachers)
+  teachers  Teacher[] @relation("ClassTeachers")
+
+  students  Student[]
+  
+  // Relations to coursework
+  plans     Plan[]
+  homeworks Homework[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+// Course templates or metadata (optional, keeping for future catalog)
+model CourseCatalog {
   id          Int        @id @default(autoincrement())
   name        String     @unique
   description String?
-  plans       Plan[]
-  homeworks   Homework[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 }
 
 model Plan {
-  id        Int      @id @default(autoincrement())
-  title     String
-  content   String
-  date      DateTime
-  courseId  Int
-  course    Course   @relation(fields: [courseId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              Int           @id @default(autoincrement())
+  title           String
+  content         String
+  date            DateTime
+  teachingClassId Int
+  teachingClass   TeachingClass @relation(fields: [teachingClassId], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 model Homework {
-  id          Int          @id @default(autoincrement())
-  title       String
-  description String?
-  deadline    DateTime?
-  courseId    Int
-  course      Course       @relation(fields: [courseId], references: [id])
-  submissions Submission[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id              Int           @id @default(autoincrement())
+  title           String
+  description     String?
+  deadline        DateTime?
+  teachingClassId Int
+  teachingClass   TeachingClass @relation(fields: [teachingClassId], references: [id])
+  submissions     Submission[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 model Submission {

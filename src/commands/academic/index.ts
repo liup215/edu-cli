@@ -13,17 +13,17 @@ academicCommand
 // --- Class Management ---
 
 academicCommand.command('class:list')
-  .description('List all classes')
+  .description('List all administrative classes')
   .action(async () => {
     const spinner = ora('Fetching classes...').start();
     try {
-      const classes = await prisma.class.findMany({
+      const classes = await prisma.administrativeClass.findMany({
         include: { _count: { select: { students: true } } }
       });
       spinner.stop();
 
       if (classes.length === 0) {
-        console.log(chalk.yellow('No classes found.'));
+        console.log(chalk.yellow('No administrative classes found.'));
         return;
       }
 
@@ -44,19 +44,19 @@ academicCommand.command('class:list')
   });
 
 academicCommand.command('class:add')
-  .description('Add a new class')
+  .description('Add a new administrative class')
   .action(async () => {
     const answers = await inquirer.prompt([
       {
         type: 'input',
         name: 'name',
-        message: 'Enter class name (e.g. "Grade 10 Class 1"):'
+        message: 'Enter class name (e.g. "十二年级1班"):'
       }
     ]);
 
     const spinner = ora('Creating class...').start();
     try {
-      const newClass = await prisma.class.create({
+      const newClass = await prisma.administrativeClass.create({
         data: { name: answers.name }
       });
       spinner.succeed(`Class "${newClass.name}" created successfully (ID: ${newClass.id}).`);
@@ -70,11 +70,69 @@ academicCommand.command('class:add')
 
 academicCommand.command('student:list')
   .description('List all students')
-  .action(async () => {
+  .option('-y, --year <year>', 'Filter by enrollment year (e.g. 2023)')
+  .option('-n, --name <name>', 'Filter by student name')
+  .option('-i, --id <studentId>', 'Filter by student ID')
+  .option('-c, --class <className>', 'Filter by administrative class name')
+  .option('-T, --teaching-class <className>', 'Filter by teaching class name')
+  .option('-H, --head-teacher <name>', 'Filter by head teacher name')
+  .option('-t, --teacher <name>', 'Filter by teaching class teacher name')
+  .action(async (options) => {
     const spinner = ora('Fetching students...').start();
     try {
+      const filter: any = {};
+      
+      if (options.year) {
+        filter.enrollmentYear = parseInt(options.year);
+      }
+      if (options.name) {
+        filter.name = { contains: options.name };
+      }
+      if (options.id) {
+        filter.studentId = { contains: options.id };
+      }
+      if (options.class) {
+        filter.administrativeClass = {
+          name: { contains: options.class }
+        };
+      }
+      // Prepare teaching class filter
+      const teachingClassWhere: any = {};
+      if (options.teachingClass) {
+        teachingClassWhere.name = { contains: options.teachingClass };
+      }
+      if (options.teacher) {
+        teachingClassWhere.teachers = {
+          some: {
+            name: { contains: options.teacher }
+          }
+        };
+      }
+      if (Object.keys(teachingClassWhere).length > 0) {
+        filter.teachingClasses = {
+          some: teachingClassWhere
+        };
+      }
+
+      if (options.headTeacher) {
+        if (!filter.administrativeClass) filter.administrativeClass = {};
+        filter.administrativeClass.headTeachers = {
+          some: {
+            name: { contains: options.headTeacher }
+          }
+        };
+      }
+
       const students = await prisma.student.findMany({
-        include: { class: true }
+        where: filter,
+        include: { 
+          administrativeClass: {
+            include: { headTeachers: true }
+          },
+          teachingClasses: {
+            include: { teachers: true }
+          }
+        }
       });
       spinner.stop();
 
@@ -83,13 +141,41 @@ academicCommand.command('student:list')
         return;
       }
 
+      console.log(chalk.green(`Found ${students.length} students:`));
+
       const table = new Table({
-        head: ['ID', 'Student ID', 'Name', 'Class'],
+        head: ['ID', 'Student ID', 'Name', 'Enrollment', 'Admin Class (Head Teacher)', 'Teaching Class (Teacher)'],
         style: { head: ['cyan'] }
       });
 
       students.forEach(s => {
-        table.push([s.id, s.studentId, s.name, s.class.name]);
+        // Format Admin Class with Head Teachers
+        let adminClassStr = 'Unassigned';
+        if (s.administrativeClass) {
+          adminClassStr = s.administrativeClass.name;
+          if (s.administrativeClass.headTeachers && s.administrativeClass.headTeachers.length > 0) {
+            const headTeachers = s.administrativeClass.headTeachers.map(t => t.name).join(', ');
+            adminClassStr += `\n(${headTeachers})`;
+          }
+        }
+
+        // Format Teaching Classes with Teachers
+        const teachingClassDetails = s.teachingClasses.map(t => {
+          let teacherStr = '';
+          if (t.teachers && t.teachers.length > 0) {
+            teacherStr = ` (${t.teachers.map(teacher => teacher.name).join(', ')})`;
+          }
+          return `${t.name}${teacherStr}`;
+        }).join('\n');
+
+        table.push([
+          s.id, 
+          s.studentId, 
+          s.name, 
+          s.enrollmentYear || '-', 
+          adminClassStr,
+          teachingClassDetails || '-'
+        ]);
       });
 
       console.log(table.toString());
@@ -103,9 +189,9 @@ academicCommand.command('student:add')
   .description('Add a new student')
   .action(async () => {
     // First fetch classes to select from
-    const classes = await prisma.class.findMany();
+    const classes = await prisma.administrativeClass.findMany();
     if (classes.length === 0) {
-      console.log(chalk.red('No classes found. Please create a class first using "academic class:add".'));
+      console.log(chalk.red('No admin classes found. Please create one first using "academic class:add".'));
       return;
     }
 
@@ -121,9 +207,15 @@ academicCommand.command('student:add')
         message: 'Enter student ID (School ID):'
       },
       {
+        type: 'input',
+        name: 'enrollmentYear',
+        message: 'Enter enrollment year (e.g. 2023):',
+        validate: (input) => !isNaN(parseInt(input)) || 'Please enter a number'
+      },
+      {
         type: 'list',
         name: 'classId',
-        message: 'Select class:',
+        message: 'Select administrative class:',
         choices: classes.map(c => ({ name: c.name, value: c.id }))
       }
     ]);
@@ -134,7 +226,8 @@ academicCommand.command('student:add')
         data: {
           name: answers.name,
           studentId: answers.studentId,
-          classId: answers.classId
+          enrollmentYear: parseInt(answers.enrollmentYear),
+          administrativeClassId: answers.classId
         }
       });
       spinner.succeed(`Student "${newStudent.name}" created successfully.`);
