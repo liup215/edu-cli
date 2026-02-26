@@ -1,0 +1,88 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Student {
+  id          Int              @id @default(autoincrement())
+  name        String
+  studentId   String           @unique
+  classId     Int
+  class       Class            @relation(fields: [classId], references: [id])
+  behaviors   BehaviorRecord[]
+  submissions Submission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Class {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  students  Student[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Course {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  description String?
+  plans       Plan[]
+  homeworks   Homework[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Plan {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  date      DateTime
+  courseId  Int
+  course    Course   @relation(fields: [courseId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Homework {
+  id          Int          @id @default(autoincrement())
+  title       String
+  description String?
+  deadline    DateTime?
+  courseId    Int
+  course      Course       @relation(fields: [courseId], references: [id])
+  submissions Submission[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Submission {
+  id          Int      @id @default(autoincrement())
+  studentId   Int
+  student     Student  @relation(fields: [studentId], references: [id])
+  homeworkId  Int
+  homework    Homework @relation(fields: [homeworkId], references: [id])
+  score       Float?
+  feedback    String?
+  status      String   @default("PENDING") // PENDING, GRADED, LATE
+  submittedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BehaviorRecord {
+  id          Int      @id @default(autoincrement())
+  studentId   Int
+  student     Student  @relation(fields: [studentId], references: [id])
+  date        DateTime @default(now())
+  type        String   // POSITIVE, NEGATIVE, NEUTRAL
+  description String
+  score       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
